@@ -72,8 +72,8 @@ A full-stack platform that enables users to automatically mirror trades from suc
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/polymarket-copy-trading.git
-cd polymarket-copy-trading
+git clone https://github.com/yourusername/polymarket-copy-trading-platform.git
+cd polymarket-copy-trading-platform
 ```
 
 ### 2. Environment Setup
@@ -184,7 +184,7 @@ python -m bot.main
 ## 📁 Project Structure
 
 ```
-polymarket-copy-trading/
+polymarket-copy-trading-platform/
 ├── backend/                  # FastAPI Backend
 │   ├── app/
 │   │   ├── api/             # API endpoints
@@ -433,7 +433,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 📞 Support
 
 - **Documentation**: [Link to your docs]
-- **Issues**: [GitHub Issues](https://github.com/yourusername/polymarket-copy-trading/issues)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/polymarket-copy-trading-platform/issues)
 - **Discord**: [Your Discord Server]
 - **Email**: support@yourproject.com
 
