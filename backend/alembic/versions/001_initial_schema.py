@@ -1,10 +1,10 @@
 """Initial database schema
 
 Revision ID: 001_initial_schema
-Revises: 
+Revises:
 Create Date: 2025-11-28 23:47:00
 
-Creates the complete database schema for Polymarket copy trading platform:
+Creates the complete database schema for Polymarket Copy Trading Platform:
 - users table with authentication and subscription
 - polymarket_api_keys table with encrypted credentials
 - traders table for leaderboard data

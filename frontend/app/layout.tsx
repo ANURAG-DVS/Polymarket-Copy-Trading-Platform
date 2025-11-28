@@ -7,7 +7,7 @@ import { Toaster } from 'sonner'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-    title: 'Polymarket Copy Trading',
+    title: 'Polymarket Copy Trading Platform',
     description: 'Professional copy trading platform for Polymarket',
 }
 
