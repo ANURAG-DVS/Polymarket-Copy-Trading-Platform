@@ -1,0 +1,126 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_id:
+        description: 'Database snapshot ID to restore (optional)'
+        required: false
+      task_definition_revision:
+        description: 'ECS task definition revision to rollback to'
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+  ECS_SERVICE: polymarket-production
+  ECS_CLUSTER: polymarket-production-cluster
+
+jobs:
+  confirm:
+    name: Confirm Rollback
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Confirm rollback
+        run: |
+          echo "⚠️  ROLLBACK INITIATED"
+          echo "Task Definition: ${{ github.event.inputs.task_definition_revision }}"
+          echo "Database Snapshot: ${{ github.event.inputs.snapshot_id || 'None' }}"
+
+  rollback-database:
+    name: Rollback Database
+    runs-on: ubuntu-latest
+    needs: confirm
+    if: github.event.inputs.snapshot_id != ''
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Restore database snapshot
+        run: |
+          echo "Restoring database from snapshot: ${{ github.event.inputs.snapshot_id }}"
+          
+          # Restore RDS snapshot
+          aws rds restore-db-instance-from-db-snapshot \
+            --db-instance-identifier ${{ secrets.RDS_INSTANCE_ID }}-rollback \
+            --db-snapshot-identifier ${{ github.event.inputs.snapshot_id }}
+          
+          echo "✅ Database rollback initiated"
+
+  rollback-service:
+    name: Rollback ECS Service
+    runs-on: ubuntu-latest
+    needs: confirm
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Update ECS service
+        run: |
+          echo "Rolling back to task definition revision: ${{ github.event.inputs.task_definition_revision }}"
+          
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ github.event.inputs.task_definition_revision }} \
+            --force-new-deployment
+          
+          echo "✅ Service rollback initiated"
+      
+      - name: Wait for stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
+          
+          echo "✅ Service rollback complete"
+
+  verify:
+    name: Verify Rollback
+    runs-on: ubuntu-latest
+    needs: rollback-service
+    
+    steps:
+      - name: Health check
+        run: |
+          sleep 30
+          
+          response=$(curl -f -s -o /dev/null -w "%{http_code}" ${{ secrets.PRODUCTION_URL }}/health)
+          if [ $response -ne 200 ]; then
+            echo "❌ Health check failed after rollback"
+            exit 1
+          fi
+          
+          echo "✅ Health check passed after rollback"
+
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [rollback-service, verify]
+    if: always()
+    
+    steps:
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🔄 Production Rollback: ${{ job.status }}
+            
+            Task Definition: ${{ github.event.inputs.task_definition_revision }}
+            Database: ${{ github.event.inputs.snapshot_id || 'Not rolled back' }}
+            
+            ${{ job.status == 'success' && '✅ Rollback successful!' || '❌ Rollback failed!' }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

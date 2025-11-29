@@ -1,0 +1,268 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: polymarket-copy-trading
+  ECS_SERVICE: polymarket-production
+  ECS_CLUSTER: polymarket-production-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition-production.json
+
+jobs:
+  approve:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Wait for approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ secrets.PRODUCTION_APPROVERS }}
+          minimum-approvals: 2
+          issue-title: "Deploy to Production - ${{ github.sha }}"
+          issue-body: |
+            **Deployment Request**
+            
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Branch: ${{ github.ref }}
+            
+            Please review and approve this production deployment.
+
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: approve
+    if: always() && (needs.approve.result == 'success' || github.event_name == 'workflow_dispatch')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          target: production
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-backend:prod-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-backend:prod-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-worker:prod-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-worker:prod-latest
+      
+      - name: Build and push telegram bot image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./telegram-bot
+          file: ./telegram-bot/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-telegram:prod-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-telegram:prod-latest
+
+  backup-database:
+    name: Backup Production Database
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Create RDS snapshot
+        run: |
+          SNAPSHOT_ID="pre-deploy-$(date +%Y%m%d-%H%M%S)"
+          aws rds create-db-snapshot \
+            --db-instance-identifier ${{ secrets.RDS_INSTANCE_ID }} \
+            --db-snapshot-identifier $SNAPSHOT_ID
+          
+          echo "Database snapshot created: $SNAPSHOT_ID"
+          echo "SNAPSHOT_ID=$SNAPSHOT_ID" >> $GITHUB_ENV
+
+  migrate-database:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    needs: backup-database
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          cd backend
+          alembic upgrade head
+
+  deploy:
+    name: Deploy to Production (Blue-Green)
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate-database]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: backend
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-backend:prod-${{ github.sha }}
+      
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+  health-check:
+    name: Production Health Checks
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Wait for deployment
+        run: sleep 60
+      
+      - name: Health check
+        id: health
+        run: |
+          for i in {1..10}; do
+            response=$(curl -f -s -o /dev/null -w "%{http_code}" ${{ secrets.PRODUCTION_URL }}/health)
+            if [ $response -eq 200 ]; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Health check attempt $i failed with status $response"
+            sleep 10
+          done
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
+      
+      - name: API health check
+        run: |
+          # Test critical endpoints
+          curl -f ${{ secrets.PRODUCTION_URL }}/api/v1/traders/leaderboard
+          curl -f ${{ secrets.PRODUCTION_URL }}/docs
+          
+          echo "✅ API health checks passed"
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "❌ Health checks failed, initiating rollback..."
+          # Trigger rollback workflow
+          gh workflow run rollback.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  monitor:
+    name: Enable Monitoring
+    runs-on: ubuntu-latest
+    needs: health-check
+    
+    steps:
+      - name: Notify monitoring systems
+        run: |
+          # Send deployment event to DataDog/New Relic
+          curl -X POST "https://api.datadoghq.com/api/v1/events" \
+            -H "DD-API-KEY: ${{ secrets.DATADOG_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"title\": \"Production Deployment\",
+              \"text\": \"Deployed version ${{ github.sha }}\",
+              \"priority\": \"normal\",
+              \"tags\": [\"environment:production\", \"service:polymarket-copy-trading\"],
+              \"alert_type\": \"info\"
+            }" || true
+
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [deploy, health-check, monitor]
+    if: always()
+    
+    steps:
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🚀 Production Deployment: ${{ job.status }}
+            
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            URL: ${{ secrets.PRODUCTION_URL }}
+            
+            ${{ job.status == 'success' && '✅ Deployment successful!' || '❌ Deployment failed!' }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,155 @@
+{
+    "dashboard": {
+        "title": "Polymarket Copy Trading - Production",
+        "description": "Production monitoring dashboard",
+        "widgets": [
+            {
+                "id": 1,
+                "definition": {
+                    "title": "Trade Execution Rate",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "sum:trade.executed{env:production}.as_rate()",
+                            "display_type": "line"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 2,
+                "definition": {
+                    "title": "Trade Execution Latency (P50, P95, P99)",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "avg:trade.execution.time{env:production}.p50",
+                            "display_type": "line",
+                            "style": {
+                                "palette": "dog_classic",
+                                "line_type": "solid",
+                                "line_width": "normal"
+                            }
+                        },
+                        {
+                            "q": "avg:trade.execution.time{env:production}.p95",
+                            "display_type": "line"
+                        },
+                        {
+                            "q": "avg:trade.execution.time{env:production}.p99",
+                            "display_type": "line"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 3,
+                "definition": {
+                    "title": "API Response Time by Endpoint",
+                    "type": "heatmap",
+                    "requests": [
+                        {
+                            "q": "avg:api.response_time{env:production} by {endpoint}"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 4,
+                "definition": {
+                    "title": "Error Rate",
+                    "type": "query_value",
+                    "requests": [
+                        {
+                            "q": "sum:api.error{env:production}.as_rate()",
+                            "aggregator": "avg"
+                        }
+                    ],
+                    "precision": 2
+                }
+            },
+            {
+                "id": 5,
+                "definition": {
+                    "title": "Active Users",
+                    "type": "query_value",
+                    "requests": [
+                        {
+                            "q": "sum:user.active{env:production}",
+                            "aggregator": "last"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 6,
+                "definition": {
+                    "title": "Queue Depth",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "avg:queue.depth{env:production} by {queue_name}"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 7,
+                "definition": {
+                    "title": "Database Query Time",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "avg:database.query.time{env:production}"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 8,
+                "definition": {
+                    "title": "CPU Usage",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "avg:system.cpu.user{env:production} by {host}"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 9,
+                "definition": {
+                    "title": "Memory Usage",
+                    "type": "timeseries",
+                    "requests": [
+                        {
+                            "q": "avg:system.mem.used{env:production} by {host}"
+                        }
+                    ]
+                }
+            },
+            {
+                "id": 10,
+                "definition": {
+                    "title": "Subscription Distribution",
+                    "type": "query_table",
+                    "requests": [
+                        {
+                            "q": "sum:user.subscription{env:production} by {tier}"
+                        }
+                    ]
+                }
+            }
+        ],
+        "layout_type": "ordered",
+        "notify_list": [],
+        "template_variables": [
+            {
+                "name": "env",
+                "default": "production",
+                "prefix": "env"
+            }
+        ]
+    }
+}

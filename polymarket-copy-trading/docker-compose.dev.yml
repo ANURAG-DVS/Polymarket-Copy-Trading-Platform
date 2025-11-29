@@ -1,0 +1,165 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: polymarket_postgres_dev
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev_password_123
+      POSTGRES_DB: polymarket_copy_dev
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polymarket_network
+  
+  # Redis Cache & Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: polymarket_redis_dev
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polymarket_network
+  
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: polymarket_backend_dev
+    env_file:
+      - .env.development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app:delegated
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - polymarket_network
+    restart: unless-stopped
+  
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: polymarket_celery_worker_dev
+    env_file:
+      - .env.development
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - polymarket_network
+    restart: unless-stopped
+  
+  # Celery Beat (Scheduler)
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.beat
+    container_name: polymarket_celery_beat_dev
+    env_file:
+      - .env.development
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - polymarket_network
+    restart: unless-stopped
+  
+  # Telegram Bot
+  telegram_bot:
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
+    container_name: polymarket_telegram_bot_dev
+    env_file:
+      - .env.development
+    volumes:
+      - ./telegram-bot:/app:delegated
+    depends_on:
+      - backend
+      - postgres
+    networks:
+      - polymarket_network
+    restart: unless-stopped
+  
+  # MailHog (Email Testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: polymarket_mailhog_dev
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - polymarket_network
+  
+  # PGAdmin (Database Management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: polymarket_pgadmin_dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@polymarket-copy.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - polymarket_network
+    restart: unless-stopped
+  
+  # Redis Commander (Redis Management)
+  redis_commander:
+    image: rediscommander/redis-commander:latest
+    container_name: polymarket_redis_commander_dev
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - polymarket_network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  polymarket_network:
+    driver: bridge
