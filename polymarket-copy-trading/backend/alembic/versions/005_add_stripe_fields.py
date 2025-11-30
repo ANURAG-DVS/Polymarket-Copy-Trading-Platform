@@ -1,9 +1,20 @@
 """
 Add Stripe fields to User model
+
+Revision ID: 005
+Revises: 004
+Create Date: 2024-01-01 00:05:00.000000
+
 """
 
 from alembic import op
 import sqlalchemy as sa
+
+# revision identifiers
+revision = '005'
+down_revision = '004'
+branch_labels = None
+depends_on = None
 
 def upgrade():
     """Add Stripe-related fields to users table"""

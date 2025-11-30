@@ -98,7 +98,7 @@ class NotificationPreferencesRequest(BaseModel):
     telegram_trade_execution: Optional[bool] = None
     telegram_daily_summary: Optional[bool] = None
     telegram_security_alerts: Optional[bool] = None
-    notification_frequency: Optional[str] = Field(None, regex="^(instant|hourly|daily)$")
+    notification_frequency: Optional[str] = Field(None, pattern="^(instant|hourly|daily)$")
 
 class TradingPreferencesRequest(BaseModel):
     """Update trading preferences"""

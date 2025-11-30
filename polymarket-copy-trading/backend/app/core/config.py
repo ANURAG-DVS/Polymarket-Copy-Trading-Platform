@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Application
     NODE_ENV: str = "development"
     PORT: int = 8000
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:8500"
     API_URL: str = "http://localhost:8000"
     
     # Database
@@ -49,5 +49,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"  # Allow extra fields from env file
+
 
 settings = Settings()

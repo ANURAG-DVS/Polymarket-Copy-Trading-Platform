@@ -30,7 +30,7 @@ class Notification(Base):
         return f"<Notification {self.id} - {self.type}>"
 
 class UserBalance(Base):
-    __tablename = "user_balances"
+    __tablename__ = "user_balances"
 
     id = Column(Integer, primary_key=True, index=True)
     
