@@ -40,8 +40,11 @@ pyotp==2.9.0
 qrcode==7.4.2
 
 # HTTP Client
-httpx==0.25.2
+httpx[http2]==0.25.2
 aiohttp==3.9.1
+
+# GraphQL Client
+gql[requests]==3.4.1
 
 # WebSocket
 websockets==12.0

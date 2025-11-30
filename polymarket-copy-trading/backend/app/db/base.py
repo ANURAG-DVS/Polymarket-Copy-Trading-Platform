@@ -2,6 +2,7 @@
 from app.db.base_class import Base
 from app.models.user import User
 from app.models.trader import Trader
+from app.models.trader_v2 import TraderV2, TraderStats, TraderMarket
 from app.models.trade import Trade
 from app.models.copy_relationship import CopyRelationship
 from app.models.notification import Notification, UserBalance
@@ -11,6 +12,9 @@ __all__ = [
     "Base",
     "User",
     "Trader",
+    "TraderV2",
+    "TraderStats",
+    "TraderMarket",
     "Trade",
     "CopyRelationship",
     "Notification",
