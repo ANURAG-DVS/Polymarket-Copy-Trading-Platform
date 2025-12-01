@@ -1,16 +1,21 @@
+"""
+FastAPI application with safe trader module imports.
+
+CRITICAL: Trader routes are imported with try/except to allow app to start
+even if trader models have issues during development.
+"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.router import api_router
-from app.api.websocket import websocket_endpoint
 from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Create FastAPI app
 app = FastAPI(
     title="Polymarket Copy Trading API",
-    description="Backend API for Polymarket copy trading platform",
-    version="1.0.0"
+    version="1.0.0",
+    description="Backend API for Polymarket copy trading platform"
 )
 
 # CORS middleware
@@ -27,86 +32,75 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API router
-app.include_router(api_router, prefix="/api/v1")
+# Include core routers (always available)
+from app.api.v1.endpoints import health, auth
+app.include_router(health.router, prefix="/api/v1/health", tags=["health"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
-# Include admin router
-from app.api.v1.endpoints import admin
-app.include_router(admin.router, prefix="/api/v1")
+# SAFE trader router import - only if tables exist
+try:
+    from app.api.v1.endpoints import traders
+    app.include_router(traders.router, prefix="/api/v1/traders", tags=["traders"])
+    logger.info("✅ Trader routes loaded successfully")
+except Exception as e:
+    logger.warning(f"⚠️  Trader routes not loaded: {e}")
+    # App continues without trader routes
 
-# WebSocket endpoint
-app.add_websocket_route("/ws", websocket_endpoint)
+# Admin router (optional)
+try:
+    from app.api.v1.endpoints import admin
+    app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+    logger.info("✅ Admin routes loaded successfully")
+except Exception as e:
+    logger.warning(f"⚠️  Admin routes not loaded: {e}")
+
+# WebSocket endpoint (optional)
+try:
+    from app.api.websocket import websocket_endpoint
+    app.add_websocket_route("/ws", websocket_endpoint)
+    logger.info("✅ WebSocket endpoint loaded")
+except Exception as e:
+    logger.warning(f"⚠️  WebSocket not loaded: {e}")
 
 
 @app.on_event("startup")
 async def startup_event():
     """
-    Application startup event handler.
+    Startup tasks.
     
-    Initializes:
-    - Trader data fetching (triggered once on startup)
-    - Cache warming
-    - Background task scheduling
+    NOTE: Don't trigger trader fetch on startup - let Celery Beat handle it.
+    This prevents import issues during startup.
     """
-    logger.info("Starting Polymarket Copy Trading API...")
-    
-    try:
-        # Trigger initial trader data fetch
-        from app.workers.trader_tasks import fetch_top_traders_task
-        
-        logger.info("Queuing initial trader data fetch...")
-        fetch_top_traders_task.delay(limit=100, timeframe_days=7)
-        
-        logger.info("Startup tasks queued successfully")
-        
-    except ImportError as e:
-        logger.error(f"Failed to import trader tasks: {e}")
-        logger.warning("Trader data fetching will not be available")
-        
-    except Exception as e:
-        logger.error(f"Error during startup: {e}", exc_info=True)
-        # Don't fail startup, just log the error
+    logger.info(f"🚀 Starting {settings.PROJECT_NAME if hasattr(settings, 'PROJECT_NAME') else 'Polymarket Copy Trading API'}")
+    logger.info(f"📊 Environment: {settings.ENVIRONMENT}")
+    logger.info("✅ Application started successfully")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """
-    Application shutdown event handler.
-    
-    Cleanup:
-    - Close Redis connections
-    - Flush pending tasks
-    - Close database connections
-    """
+    """Shutdown tasks - cleanup connections"""
     logger.info("Shutting down Polymarket Copy Trading API...")
     
     try:
-        # Close Redis connection
         from app.api.deps import close_redis
         await close_redis()
-        
-        logger.info("Shutdown complete")
-        
+        logger.info("Redis connections closed")
     except Exception as e:
-        logger.error(f"Error during shutdown: {e}", exc_info=True)
+        logger.error(f"Error closing Redis: {e}")
+    
+    logger.info("✅ Shutdown complete")
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "Polymarket Copy Trading API",
+        "message": "Polymarket Copy Trading Platform API",
         "version": "1.0.0",
+        "status": "running",
         "docs": "/docs"
     }
 
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "polymarket-copy-trading"
-    }
 
 if __name__ == "__main__":
     import uvicorn
