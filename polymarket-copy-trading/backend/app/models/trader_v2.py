@@ -52,17 +52,19 @@ class TraderV2(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
-    # Relationships
+    # Relationships - CRITICAL FIX: Use lazy="select" to prevent recursion
     stats = relationship(
         "TraderStats",
+        back_populates="trader",
         cascade="all, delete-orphan",
-        lazy="dynamic"
+        lazy="select"  # Load only when explicitly accessed
     )
     
     markets = relationship(
         "TraderMarket",
+        back_populates="trader",
         cascade="all, delete-orphan",
-        lazy="dynamic"
+        lazy="select"  # Load only when explicitly accessed
     )
     
     # Constraints
@@ -77,17 +79,21 @@ class TraderV2(Base):
     )
     
     def __repr__(self):
-        """String representation for debugging"""
+        """SAFE __repr__ - only use scalar fields to prevent recursion"""
         return (
             f"<TraderV2(wallet={self.wallet_address[:10]}..., "
-            f"username={self.username}, "
             f"pnl={self.total_pnl}, "
             f"win_rate={self.win_rate}%)>"
         )
     
-    def to_dict(self):
-        """Convert model to dictionary for serialization"""
-        return {
+    def to_dict(self, include_relations=False):
+        """
+        Convert model to dictionary for serialization.
+        
+        Args:
+            include_relations: Whether to include relationship counts
+        """
+        data = {
             'wallet_address': self.wallet_address,
             'username': self.username,
             'total_volume': float(self.total_volume) if self.total_volume else 0.0,
@@ -99,6 +105,13 @@ class TraderV2(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+        
+        # Only include relationships if explicitly requested
+        if include_relations:
+            data['stats_count'] = len(list(self.stats)) if self.stats else 0
+            data['markets_count'] = len(list(self.markets)) if self.markets else 0
+        
+        return data
     
     def calculate_7d_rank(self, db_session):
         """
@@ -172,8 +185,8 @@ class TraderStats(Base):
     win_count = Column(Integer, default=0, nullable=False)
     loss_count = Column(Integer, default=0, nullable=False)
     
-    # Relationship (one-way to prevent circular reference)
-    trader = relationship("TraderV2")
+    # Relationship - CRITICAL FIX: Use lazy="select" and back_populates
+    trader = relationship("TraderV2", back_populates="stats", lazy="select")
     
     # Constraints and Indexes
     __table_args__ = (
@@ -187,12 +200,11 @@ class TraderStats(Base):
     )
     
     def __repr__(self):
-        """String representation for debugging"""
+        """SAFE __repr__ - only scalar fields to prevent recursion"""
         return (
             f"<TraderStats(wallet={self.wallet_address[:10]}..., "
             f"date={self.date}, "
-            f"pnl={self.daily_pnl}, "
-            f"trades={self.trades_count})>"
+            f"pnl={self.daily_pnl})>"
         )
     
     def to_dict(self):
@@ -248,8 +260,8 @@ class TraderMarket(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Relationship (one-way to prevent circular reference)
-    trader = relationship("TraderV2")
+    # Relationship - CRITICAL FIX: Use lazy="select" and back_populates
+    trader = relationship("TraderV2", back_populates="markets", lazy="select")
     
     # Constraints and Indexes
     __table_args__ = (
@@ -261,13 +273,11 @@ class TraderMarket(Base):
     )
     
     def __repr__(self):
-        """String representation for debugging"""
+        """SAFE __repr__ - only scalar fields to prevent recursion"""
         return (
             f"<TraderMarket(wallet={self.wallet_address[:10]}..., "
-            f"market={self.market_id[:10]}..., "
-            f"side={self.position_side.value}, "
-            f"status={self.status.value}, "
-            f"pnl={self.pnl})>"
+            f"market={self.market_id[:10] if len(self.market_id) > 10 else self.market_id}..., "
+            f"status={self.status.value if hasattr(self.status, 'value') else self.status})>"
         )
     
     def to_dict(self):
@@ -277,10 +287,10 @@ class TraderMarket(Base):
             'wallet_address': self.wallet_address,
             'market_id': self.market_id,
             'market_name': self.market_name,
-            'position_side': self.position_side.value if self.position_side else None,
+            'position_side': self.position_side.value if hasattr(self.position_side, 'value') else self.position_side,
             'entry_price': float(self.entry_price) if self.entry_price else 0.0,
             'quantity': float(self.quantity) if self.quantity else 0.0,
-            'status': self.status.value if self.status else None,
+            'status': self.status.value if hasattr(self.status, 'value') else self.status,
             'pnl': float(self.pnl) if self.pnl else 0.0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,

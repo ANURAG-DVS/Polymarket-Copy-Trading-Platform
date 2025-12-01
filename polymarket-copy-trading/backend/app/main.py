@@ -59,6 +59,10 @@ async def startup_event():
         
         logger.info("Startup tasks queued successfully")
         
+    except ImportError as e:
+        logger.error(f"Failed to import trader tasks: {e}")
+        logger.warning("Trader data fetching will not be available")
+        
     except Exception as e:
         logger.error(f"Error during startup: {e}", exc_info=True)
         # Don't fail startup, just log the error
@@ -71,6 +75,7 @@ async def shutdown_event():
     
     Cleanup:
     - Close Redis connections
+    - Flush pending tasks
     - Close database connections
     """
     logger.info("Shutting down Polymarket Copy Trading API...")
