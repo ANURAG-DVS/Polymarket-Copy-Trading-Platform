@@ -55,18 +55,14 @@ class TraderV2(Base):
     # Relationships
     stats = relationship(
         "TraderStats",
-        back_populates="trader",
         cascade="all, delete-orphan",
-        lazy="dynamic",
-        repr=False  # Prevent circular reference in repr
+        lazy="dynamic"
     )
     
     markets = relationship(
         "TraderMarket",
-        back_populates="trader",
         cascade="all, delete-orphan",
-        lazy="dynamic",
-        repr=False  # Prevent circular reference in repr
+        lazy="dynamic"
     )
     
     # Constraints
@@ -176,8 +172,8 @@ class TraderStats(Base):
     win_count = Column(Integer, default=0, nullable=False)
     loss_count = Column(Integer, default=0, nullable=False)
     
-    # Relationship
-    trader = relationship("TraderV2", back_populates="stats", repr=False)
+    # Relationship (one-way to prevent circular reference)
+    trader = relationship("TraderV2")
     
     # Constraints and Indexes
     __table_args__ = (
@@ -252,8 +248,8 @@ class TraderMarket(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Relationship
-    trader = relationship("TraderV2", back_populates="markets", repr=False)
+    # Relationship (one-way to prevent circular reference)
+    trader = relationship("TraderV2")
     
     # Constraints and Indexes
     __table_args__ = (
