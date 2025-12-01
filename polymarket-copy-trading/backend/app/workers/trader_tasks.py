@@ -22,7 +22,7 @@ import redis
 import json
 
 from app.core.celery_app import celery_app
-from app.db.session import get_async_db
+from app.db.session import async_session
 from app.services.graph_client import graph_client
 from app.services.trader_fetcher import TraderDataFetcher
 from app.models.trader_v2 import TraderV2
@@ -90,7 +90,7 @@ def fetch_top_traders_task(
     logger.info(f"Starting fetch_top_traders_task: limit={limit}, timeframe={timeframe_days}d")
     
     async def _execute():
-        async for db in get_async_db():
+        async with async_session() as db:
             try:
                 # Initialize fetcher
                 fetcher = TraderDataFetcher(
@@ -194,7 +194,7 @@ def update_trader_statistics_task(
     logger.info(f"Starting update_trader_statistics_task for {len(wallet_addresses)} traders")
     
     async def _execute():
-        async for db in get_async_db():
+        async with async_session() as db:
             try:
                 fetcher = TraderDataFetcher(
                     db_session=db,
@@ -286,7 +286,7 @@ def calculate_leaderboard_task() -> Dict[str, int]:
     logger.info("Starting calculate_leaderboard_task")
     
     async def _execute():
-        async for db in get_async_db():
+        async with async_session() as db:
             try:
                 fetcher = TraderDataFetcher(
                     db_session=db,
@@ -363,7 +363,7 @@ def sync_trader_positions_task(
     logger.info(f"Starting sync_trader_positions_task")
     
     async def _execute():
-        async for db in get_async_db():
+        async with async_session() as db:
             try:
                 fetcher = TraderDataFetcher(
                     db_session=db,
