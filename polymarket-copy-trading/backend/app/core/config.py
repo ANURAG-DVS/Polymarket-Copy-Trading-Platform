@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     
     # Application
     NODE_ENV: str = "development"
+    ENVIRONMENT: str = "development"  # development, production, worker
     PORT: int = 8000
     FRONTEND_URL: str = "http://localhost:8500"
     API_URL: str = "http://localhost:8000"
@@ -50,17 +51,15 @@ class Settings(BaseSettings):
     GRAPH_API_URL: str = "https://api.thegraph.com/subgraphs/name/polymarket/matic-markets-5"
     GRAPH_API_KEY: Optional[str] = None
     
-    # Trader Data Fetching Configuration
+    # Trader Data Configuration
     TRADER_FETCH_INTERVAL: int = 300  # 5 minutes in seconds
-    LEADERBOARD_CACHE_TTL: int = 60  # 1 minute cache TTL
-    TRADER_CACHE_TTL: int = 300  # 5 minutes cache TTL
-    MIN_TRADER_TRADES: int = 10  # Minimum trades to appear on leaderboard
-    MIN_TRADER_VOLUME: str = "100.00"  # Minimum volume (as string for Decimal conversion)
+    LEADERBOARD_CACHE_TTL: int = 60  # 1 minute
+    TRADER_CACHE_TTL: int = 300  # 5 minutes
+    MIN_TRADER_TRADES: int = 10
+    MIN_TRADER_VOLUME: float = 1000.0
     
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = "allow"  # Allow extra fields from env file
-
 
 settings = Settings()
