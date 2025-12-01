@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.api.websocket import websocket_endpoint
 from app.core.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Polymarket Copy Trading API",
@@ -27,8 +30,61 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
+# Include admin router
+from app.api.v1.endpoints import admin
+app.include_router(admin.router, prefix="/api/v1")
+
 # WebSocket endpoint
 app.add_websocket_route("/ws", websocket_endpoint)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Application startup event handler.
+    
+    Initializes:
+    - Trader data fetching (triggered once on startup)
+    - Cache warming
+    - Background task scheduling
+    """
+    logger.info("Starting Polymarket Copy Trading API...")
+    
+    try:
+        # Trigger initial trader data fetch
+        from app.workers.trader_tasks import fetch_top_traders_task
+        
+        logger.info("Queuing initial trader data fetch...")
+        fetch_top_traders_task.delay(limit=100, timeframe_days=7)
+        
+        logger.info("Startup tasks queued successfully")
+        
+    except Exception as e:
+        logger.error(f"Error during startup: {e}", exc_info=True)
+        # Don't fail startup, just log the error
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Application shutdown event handler.
+    
+    Cleanup:
+    - Close Redis connections
+    - Close database connections
+    """
+    logger.info("Shutting down Polymarket Copy Trading API...")
+    
+    try:
+        # Close Redis connection
+        from app.api.deps import close_redis
+        await close_redis()
+        
+        logger.info("Shutdown complete")
+        
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}", exc_info=True)
+
 
 @app.get("/")
 async def root():

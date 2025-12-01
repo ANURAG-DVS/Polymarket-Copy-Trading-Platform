@@ -47,7 +47,15 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
     
     # The Graph Protocol
+    GRAPH_API_URL: str = "https://api.thegraph.com/subgraphs/name/polymarket/matic-markets-5"
     GRAPH_API_KEY: Optional[str] = None
+    
+    # Trader Data Fetching Configuration
+    TRADER_FETCH_INTERVAL: int = 300  # 5 minutes in seconds
+    LEADERBOARD_CACHE_TTL: int = 60  # 1 minute cache TTL
+    TRADER_CACHE_TTL: int = 300  # 5 minutes cache TTL
+    MIN_TRADER_TRADES: int = 10  # Minimum trades to appear on leaderboard
+    MIN_TRADER_VOLUME: str = "100.00"  # Minimum volume (as string for Decimal conversion)
     
     class Config:
         env_file = ".env"
