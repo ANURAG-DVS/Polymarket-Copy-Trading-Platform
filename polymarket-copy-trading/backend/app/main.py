@@ -39,11 +39,12 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 # SAFE trader router import - only if tables exist
 try:
-    from app.api.v1.endpoints import traders
+    from app.api.v1.endpoints import traders, trades
     app.include_router(traders.router, prefix="/api/v1/traders", tags=["traders"])
-    logger.info("✅ Trader routes loaded successfully")
+    app.include_router(trades.router, prefix="/api/v1/trades", tags=["trades"])
+    logger.info("✅ Trader and Trades routes loaded successfully")
 except Exception as e:
-    logger.warning(f"⚠️  Trader routes not loaded: {e}")
+    logger.warning(f"⚠️  Trader/Trades routes not loaded: {e}")
     # App continues without trader routes
 
 # Admin router (optional)

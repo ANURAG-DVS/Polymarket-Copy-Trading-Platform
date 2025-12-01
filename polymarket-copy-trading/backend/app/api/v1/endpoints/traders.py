@@ -4,8 +4,8 @@ Trader API endpoints with explicit loading control.
 CRITICAL FIX: Uses manual serialization via to_dict() to avoid ORM relationship loading.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import desc, and_, select, func
 from typing import List, Optional
 from datetime import datetime, timedelta
 
@@ -29,7 +29,7 @@ async def get_leaderboard(
     offset: int = Query(0, ge=0),
     min_trades: int = Query(10, ge=1),
     min_winrate: float = Query(0, ge=0, le=100),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> List[TraderV2LeaderboardResponse]:
     """
     Get top traders leaderboard.
@@ -37,7 +37,7 @@ async def get_leaderboard(
     """
     try:
         # Query WITHOUT loading relationships
-        query = db.query(TraderV2).filter(
+        stmt = select(TraderV2).filter(
             and_(
                 TraderV2.total_trades >= min_trades,
                 TraderV2.win_rate >= min_winrate
@@ -45,10 +45,13 @@ async def get_leaderboard(
         )
         
         # Order by P&L descending
-        query = query.order_by(desc(TraderV2.total_pnl))
+        stmt = stmt.order_by(desc(TraderV2.total_pnl))
         
         # Apply pagination
-        traders = query.offset(offset).limit(limit).all()
+        stmt = stmt.offset(offset).limit(limit)
+        
+        result = await db.execute(stmt)
+        traders = result.scalars().all()
         
         # Manually construct response to avoid relationship loading
         response = []
@@ -71,7 +74,7 @@ async def get_leaderboard(
 @router.get("/{wallet_address}", response_model=TraderV2DetailResponse)
 async def get_trader_details(
     wallet_address: str = Path(..., pattern="^0x[a-fA-F0-9]{40}$"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TraderV2DetailResponse:
     """
     Get detailed trader information.
@@ -79,9 +82,11 @@ async def get_trader_details(
     """
     try:
         # Query trader WITHOUT auto-loading relationships
-        trader = db.query(TraderV2).filter(
+        stmt = select(TraderV2).filter(
             TraderV2.wallet_address == wallet_address.lower()
-        ).first()
+        )
+        result = await db.execute(stmt)
+        trader = result.scalars().first()
         
         if not trader:
             raise HTTPException(status_code=404, detail="Trader not found")
@@ -90,34 +95,40 @@ async def get_trader_details(
         trader_dict = trader.to_dict(include_relations=False)
         
         # Manually count stats and markets (separate queries)
-        stats_count = db.query(TraderStats).filter(
+        stmt_stats = select(func.count()).select_from(TraderStats).filter(
             TraderStats.wallet_address == wallet_address.lower()
-        ).count()
+        )
+        stats_count = (await db.execute(stmt_stats)).scalar()
         
-        markets_count = db.query(TraderMarket).filter(
+        stmt_markets = select(func.count()).select_from(TraderMarket).filter(
             TraderMarket.wallet_address == wallet_address.lower()
-        ).count()
+        )
+        markets_count = (await db.execute(stmt_markets)).scalar()
         
         # Add counts to response
         trader_dict["stats_count"] = stats_count
         trader_dict["markets_count"] = markets_count
         
         # Optionally load recent stats (last 30 days)
-        recent_stats = db.query(TraderStats).filter(
+        stmt_recent_stats = select(TraderStats).filter(
             and_(
                 TraderStats.wallet_address == wallet_address.lower(),
                 TraderStats.date >= datetime.utcnow().date() - timedelta(days=30)
             )
-        ).order_by(desc(TraderStats.date)).limit(30).all()
+        ).order_by(desc(TraderStats.date)).limit(30)
+        
+        recent_stats = (await db.execute(stmt_recent_stats)).scalars().all()
         
         trader_dict["recent_stats"] = [
             TraderStatsResponse(**stat.to_dict()) for stat in recent_stats
         ]
         
         # Optionally load recent markets
-        recent_markets = db.query(TraderMarket).filter(
+        stmt_recent_markets = select(TraderMarket).filter(
             TraderMarket.wallet_address == wallet_address.lower()
-        ).order_by(desc(TraderMarket.created_at)).limit(10).all()
+        ).order_by(desc(TraderMarket.created_at)).limit(10)
+        
+        recent_markets = (await db.execute(stmt_recent_markets)).scalars().all()
         
         trader_dict["recent_markets"] = [
             TraderMarketResponse(**market.to_dict()) for market in recent_markets
@@ -137,7 +148,7 @@ async def get_trader_statistics(
     wallet_address: str = Path(..., pattern="^0x[a-fA-F0-9]{40}$"),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> List[TraderStatsResponse]:
     """
     Get time-series statistics for a trader.
@@ -151,13 +162,15 @@ async def get_trader_statistics(
             start_date = end_date - timedelta(days=30)
         
         # Query stats WITHOUT loading trader relationship
-        stats = db.query(TraderStats).filter(
+        stmt = select(TraderStats).filter(
             and_(
                 TraderStats.wallet_address == wallet_address.lower(),
                 TraderStats.date >= start_date.date(),
                 TraderStats.date <= end_date.date()
             )
-        ).order_by(TraderStats.date).all()
+        ).order_by(TraderStats.date)
+        
+        stats = (await db.execute(stmt)).scalars().all()
         
         # Manually serialize
         return [TraderStatsResponse(**stat.to_dict()) for stat in stats]
@@ -171,7 +184,7 @@ async def get_trader_statistics(
 async def search_traders(
     query: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> List[TraderV2Response]:
     """
     Search traders by wallet address or username.
@@ -181,10 +194,12 @@ async def search_traders(
         search_term = query.lower()
         
         # Query WITHOUT loading relationships
-        traders = db.query(TraderV2).filter(
+        stmt = select(TraderV2).filter(
             (TraderV2.wallet_address.like(f"%{search_term}%")) |
             (TraderV2.username.like(f"%{search_term}%"))
-        ).limit(limit).all()
+        ).limit(limit)
+        
+        traders = (await db.execute(stmt)).scalars().all()
         
         # Manually serialize
         return [TraderV2Response(**trader.to_dict(include_relations=False)) for trader in traders]

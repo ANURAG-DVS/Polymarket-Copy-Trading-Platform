@@ -16,7 +16,7 @@ const Leaderboard: React.FC = () => {
     if (isLoading) return <div className="p-8 text-center">Loading leaderboard...</div>;
     if (error) return <div className="p-8 text-center text-red-500">Error loading leaderboard</div>;
 
-    const traders = data?.items || [];
+    const traders = Array.isArray(data) ? data : data?.items || [];
 
     return (
         <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -53,29 +53,29 @@ const Leaderboard: React.FC = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {traders.map((trader: any, index: number) => (
-                            <tr key={trader.id} className="hover:bg-gray-50">
+                            <tr key={trader.wallet_address} className="hover:bg-gray-50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     #{((filters.page - 1) * filters.limit) + index + 1}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="flex items-center">
                                         <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold mr-3">
-                                            {trader.address.substring(0, 2)}
+                                            {trader.wallet_address.substring(0, 2)}
                                         </div>
                                         <div>
-                                            <div className="text-sm font-medium text-gray-900">{trader.address.substring(0, 6)}...{trader.address.substring(38)}</div>
-                                            <div className="text-xs text-gray-500">Vol: ${trader.volume?.toLocaleString()}</div>
+                                            <div className="text-sm font-medium text-gray-900">{trader.wallet_address.substring(0, 6)}...{trader.wallet_address.substring(38)}</div>
+                                            <div className="text-xs text-gray-500">Vol: ${Number(trader.total_volume).toLocaleString()}</div>
                                         </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className={`text-sm font-semibold flex items-center ${trader.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {trader.pnl >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-                                        ${Math.abs(trader.pnl).toLocaleString()}
+                                    <div className={`text-sm font-semibold flex items-center ${trader.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {trader.total_pnl >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
+                                        ${Math.abs(trader.total_pnl).toLocaleString()}
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {(trader.win_rate * 100).toFixed(1)}%
+                                    {Number(trader.win_rate).toFixed(1)}%
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                     {trader.total_trades}

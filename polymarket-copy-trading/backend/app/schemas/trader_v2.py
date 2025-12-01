@@ -8,7 +8,7 @@ CRITICAL: Schemas do NOT include relationship fields to prevent RecursionError.
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import datetime, date as date_type
 from decimal import Decimal
 from enum import Enum
 
@@ -61,7 +61,7 @@ class TraderStatsBase(BaseModel):
     NO RELATIONSHIPS - only scalar fields.
     """
     wallet_address: str = Field(..., min_length=42, max_length=42)
-    date: date = Field(..., description="Date for this daily stat")
+    date: date_type = Field(..., description="Date for this daily stat")
     daily_pnl: Decimal = Field(default=Decimal("0.0"))
     daily_volume: Decimal = Field(default=Decimal("0.0"), ge=0)
     trades_count: int = Field(default=0, ge=0)

@@ -356,6 +356,46 @@ Usage:
 """
 
 
+BIGGEST_TRADES_QUERY = """
+query GetBiggestTrades($startTime: Int!, $limit: Int!) {
+  positions(
+    first: $limit,
+    orderBy: amount,
+    orderDirection: desc,
+    where: {
+      timestamp_gte: $startTime
+    }
+  ) {
+    id
+    market {
+      id
+      question
+      category
+    }
+    user {
+      address
+    }
+    outcome
+    amount
+    entryPrice
+    timestamp
+    transactionHash
+  }
+}
+"""
+"""
+BIGGEST_TRADES_QUERY fetches the largest individual trades by amount.
+
+Returns:
+- Trade details (market, user, amount, price)
+- Transaction hash for verification
+
+Usage:
+- "Whale watching" features
+- Identifying significant market moves
+"""
+
+
 # ============================================================================
 # GraphQL Query Builder Helper Class
 # ============================================================================
@@ -636,6 +676,30 @@ class GraphQueryBuilder:
         return (LEADERBOARD_QUERY, variables)
     
     @staticmethod
+    def build_biggest_trades_query(
+        timeframe_days: int = 1,
+        limit: int = 10
+    ) -> Tuple[str, Dict]:
+        """
+        Build a query for fetching biggest trades.
+        
+        Args:
+            timeframe_days: Number of days to look back (default: 1)
+            limit: Number of trades to return (default: 10)
+            
+        Returns:
+            Tuple of (query_string, variables_dict)
+        """
+        start_time = GraphQueryBuilder.build_time_filter(timeframe_days)
+        
+        variables = {
+            "startTime": start_time,
+            "limit": limit
+        }
+        
+        return (BIGGEST_TRADES_QUERY, variables)
+    
+    @staticmethod
     def normalize_address(address: str) -> str:
         """
         Normalize an Ethereum address for The Graph queries.
@@ -697,6 +761,7 @@ __all__ = [
     'TRADER_MARKETS_QUERY',
     'MARKET_DETAILS_QUERY',
     'LEADERBOARD_QUERY',
+    'BIGGEST_TRADES_QUERY',
     
     # Builder Class
     'GraphQueryBuilder',

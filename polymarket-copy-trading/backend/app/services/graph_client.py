@@ -374,6 +374,49 @@ class PolymarketGraphClient:
             logger.error(f"Error fetching markets for {wallet_address}: {e}")
             return []
     
+    async def get_biggest_trades(
+        self,
+        limit: int = 10,
+        timeframe_days: int = 1
+    ) -> List[Dict]:
+        """
+        Get biggest trades by amount in the specified timeframe.
+        
+        Args:
+            limit: Maximum number of trades to return (default: 10)
+            timeframe_days: Number of days to look back (default: 1)
+            
+        Returns:
+            List of trade dictionaries
+        """
+        if self.test_mode:
+            # Return mock data for biggest trades
+            return [
+                {
+                    "id": f"0x{i}abc",
+                    "market": {"id": f"0x{i}mkt", "question": f"Market {i}", "category": "Crypto"},
+                    "user": {"address": f"0x{i}user..."},
+                    "outcome": "YES",
+                    "amount": 10000.0 * (10 - i),
+                    "entryPrice": 0.5 + (i * 0.01),
+                    "timestamp": int(datetime.utcnow().timestamp()) - (i * 3600),
+                    "transactionHash": f"0x{i}tx..."
+                }
+                for i in range(limit)
+            ]
+            
+        query, variables = GraphQueryBuilder.build_biggest_trades_query(
+            timeframe_days=timeframe_days,
+            limit=limit
+        )
+        
+        response = await self._execute_query(query, variables)
+        
+        if not response or 'positions' not in response:
+            return []
+            
+        return response['positions']
+    
     # ========================================================================
     # Private Helper Methods
     # ========================================================================
@@ -655,3 +698,4 @@ class PolymarketGraphClient:
 
 # Singleton instance
 graph_client = PolymarketGraphClient()
+
